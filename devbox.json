@@ -1,0 +1,11 @@
+{
+  "packages": [
+    "go"
+  ],
+  "shell": {
+    "init_hook": null
+  },
+  "nixpkgs": {
+    "commit": "242246ee1e58f54d2322227fc5eef53b4a616a31"
+  }
+}
