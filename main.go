@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 )
 
 var getaroundBaseURL = "https://api.getaround.com/"
+var debug = true
 
 type GetaroundClient struct {
 	token string
@@ -32,7 +34,23 @@ func main() {
 		httpClient: http.DefaultClient,
 	}
 
-	data, err := client.getUser()
+	user, err := client.getUser()
+	if err != nil {
+		panic(err)
+	}
+
+	cars, err := client.listCars(user["id"].(string))
+	if err != nil {
+		panic(err)
+	}
+
+	if cars["count"].(float64) == 0 {
+		log.Println("No cars found, exiting")
+		return
+	}
+	carID := cars["items"].([]any)[0].(map[string]any)["id"].(string)
+
+	data, err := client.tripsByCar(carID)
 	if err != nil {
 		panic(err)
 	}
@@ -45,9 +63,47 @@ func main() {
 	fmt.Println(string(pretty))
 }
 
+func (c *GetaroundClient) getUser() (map[string]any, error) {
+	req, err := http.NewRequest(http.MethodGet, c.baseURL+"users/me", nil)
+	if err != nil {
+		return nil, err
+	}
+	return c.do(req)
+}
+
+func (c *GetaroundClient) listCars(ownerID string) (map[string]any, error) {
+	req, err := http.NewRequest(http.MethodGet, c.baseURL+"cars", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	q := req.URL.Query()
+	q.Add("owner_id", ownerID)
+	req.URL.RawQuery = q.Encode()
+
+	return c.do(req)
+}
+
+func (c *GetaroundClient) tripsByCar(carID string) (map[string]any, error) {
+	req, err := http.NewRequest(http.MethodGet, c.baseURL+"trips", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	q := req.URL.Query()
+	q.Add("car_id", carID)
+	q.Add("sort", "starts_at")
+	q.Add("summary_renter_trip_status", "ENDED")
+	q.Add("fields", "items{id,reservation,status}")
+	req.URL.RawQuery = q.Encode()
+
+	return c.do(req)
+}
+
 func (c *GetaroundClient) do(req *http.Request) (map[string]any, error) {
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.token))
 
+	log.Printf(fmt.Sprintf("%s %s%s", req.Method, req.URL.Host, req.URL.Path))
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -65,12 +121,4 @@ func (c *GetaroundClient) do(req *http.Request) (map[string]any, error) {
 	}
 
 	return generic, nil
-}
-
-func (c *GetaroundClient) getUser() (map[string]any, error) {
-	req, err := http.NewRequest(http.MethodGet, c.baseURL+"users/me", nil)
-	if err != nil {
-		return nil, err
-	}
-	return c.do(req)
 }
